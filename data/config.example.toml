@@ -1,0 +1,7 @@
+funding_rate = "0.02"
+min_net_threshold = "50"
+entry_execution_buffer = "60"
+exit_basis_buffer = "40"
+max_cross_leg_ms = 500
+stale_quote_ms = 3000
+refresh_seconds = 2
