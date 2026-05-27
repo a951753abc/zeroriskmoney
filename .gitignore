@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 本機帳號設定與參考資料（含手續費折數/憑證路徑等個人資訊，勿提交）
+data/*.sqlite
+data/config.toml
+
+# OS / 編輯器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
