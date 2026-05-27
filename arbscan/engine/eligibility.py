@@ -2,7 +2,7 @@ from datetime import datetime
 from arbscan.models import (ContractSpec, Quote, DividendEvent, ContractAdjustment,
                             ExecutionMode)
 
-_BLOCKING = ("跨除息", "調整型", "過期", "量不足", "display_only")
+BLOCKING_FLAGS = ("跨除息", "調整型", "過期", "量不足", "display_only")
 
 def _stale(q: Quote, now: datetime, stale_ms: int) -> bool:
     return (now - q.received_timestamp).total_seconds() * 1000 > stale_ms
@@ -26,5 +26,5 @@ def evaluate_eligibility(spec: ContractSpec, fut: Quote, spot: Quote,
         flags.append("量不足")
     if spec.execution_mode == ExecutionMode.ODD_LOT_CALL_AUCTION:
         flags.append("display_only")
-    eligible = not any(f in _BLOCKING for f in flags)
+    eligible = not any(f in BLOCKING_FLAGS for f in flags)
     return eligible, tuple(dict.fromkeys(flags))

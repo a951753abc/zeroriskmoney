@@ -12,7 +12,7 @@ def run_once(scanner: Scanner, now: datetime, as_of: str, data_version: str, ren
     if new:
         beep(len(new))
     if render:
-        Console().print(build_table(results, as_of, data_version))
+        Console().print(build_table(results, as_of, data_version, scanner.min_net_threshold))
     return len(results)
 
 def run_loop(scanner: Scanner, refresh_seconds: int, data_version: str) -> None:
@@ -25,5 +25,5 @@ def run_loop(scanner: Scanner, refresh_seconds: int, data_version: str) -> None:
             new = scanner.detect_new_signals(results)
             if new:
                 beep(len(new))
-            live.update(build_table(results, now.strftime("%H:%M:%S"), data_version), refresh=True)
+            live.update(build_table(results, now.strftime("%H:%M:%S"), data_version, scanner.min_net_threshold), refresh=True)
             time.sleep(refresh_seconds)

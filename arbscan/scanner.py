@@ -7,9 +7,7 @@ from arbscan.engine.cost import (FeePolicy, transaction_cost, funding_cost,
 from arbscan.engine.spread import entry_spread, quoted_edge_profit
 from arbscan.engine.capital import stress_capital
 from arbscan.engine.rank import annualized_return
-from arbscan.engine.eligibility import evaluate_eligibility
-
-_BLOCKING = ("跨除息", "調整型", "過期", "量不足", "display_only")
+from arbscan.engine.eligibility import evaluate_eligibility, BLOCKING_FLAGS
 
 class Scanner:
     def __init__(self, specs, feed: QuoteFeed, fee: FeePolicy, funding_rate: Decimal,
@@ -57,15 +55,15 @@ class Scanner:
             ann = annualized_return(net, cap_joint, days_held)
             out.append(ArbResult(spec.fut_symbol, spec.underlying, spread, gross, nbf, net,
                                  cap_A, cap_joint, ann, days_held, flags))
-        out.sort(key=lambda r: (any(f in _BLOCKING for f in r.flags), -r.annualized))
+        out.sort(key=lambda r: (any(f in BLOCKING_FLAGS for f in r.flags), -r.annualized))
         return out
 
     def detect_new_signals(self, results: list[ArbResult]) -> list[ArbResult]:
-        """合格、保守淨利達標、且本輪新出現者。"""
+        """合格且 estimated_net_conservative>門檻者視為達標。本輪達標但上一輪不在達標集合者回報為『新訊號』。注意：標的若因報價短暫過期掉出達標集合、之後又重回，會被視為新訊號再次觸發（設計上：重新可成交值得再次提示）。"""
         new = []
         live = set()
         for r in results:
-            qualified = (not any(f in _BLOCKING for f in r.flags)
+            qualified = (not any(f in BLOCKING_FLAGS for f in r.flags)
                          and r.estimated_net_conservative > self.min_net_threshold)
             if qualified:
                 live.add(r.fut_symbol)
