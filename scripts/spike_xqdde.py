@@ -1,45 +1,50 @@
 """XQ 全球贏家 DDE 探測腳本（計畫 Task 1 spike）。
 
-目的：確認能否用 pywin32 DDE client 從 XQ 取得「現股 + 股票期貨 + 零股 + ETF 期貨」的即時報價，
-並找出可用的 service / topic / item 字串格式。這是整個資料層成立與否的關鍵未知。
+目的：確認能否用 pywin32 DDE client 從 XQ 取得「現股 + 股票期貨」即時報價，
+並確認 service / topic / item 字串格式。這是整個資料層成立與否的關鍵未知。
+
+★重要：請在「你自己開著 XQ 的那台機器、自己的終端機(cmd/PowerShell)」執行本檔。
+  DDE 靠 Windows 視窗訊息，跨 session/桌面看不到對方；由代理(Claude)代跑可能連不上。
+
+已查證：XQ DDE 在 Excel 的公式是  =XQLITE|Quote!'2330.TW-Close'
+  → service=XQLITE, topic=Quote, 股票 item = 代碼.TW-欄位（欄位用英文，如 Close/Bid/Ask）。
 
 用法：
-  1. 先開啟 XQ 全球贏家並登入（行情要在跑）。
-  2. 把下面 SYMBOLS 換成你自選清單裡實際的代碼（尤其股期/ETF期/零股的代碼格式）。
-  3. 執行：  python scripts/spike_xqdde.py
-  4. 把畫面輸出（哪組 service/topic 連得上、哪種 item 格式取得到數字）回報，
-     我就能據此實作 arbscan/feed/xqdde.py。
-
-備註：XQ 的 DDE 在 Excel 內通常長這樣： =XQ|Quote!'2330.成交價'
-  → application(service) 可能是 "XQ"，topic 可能是 "Quote"，item 可能是 "代碼.欄位"。
-  下面把幾個常見候選都試一遍；若全失敗，請打開 XQ「工具→DDE 功能 / 線上說明的 DDE 條目」
-  對照實際的 service/topic/item 格式後修改本檔再跑。
+  1. 開啟 XQ 全球贏家並登入（行情在跑）。若不確定 DDE 是否啟用，先在 Excel 某格貼上
+     =XQLITE|Quote!'2330.TW-Close'  看會不會跳出價格（會跳＝DDE 正常）。
+  2. 執行：  python scripts/spike_xqdde.py
+  3. 把畫面輸出回報，我就能據此實作 arbscan/feed/xqdde.py。
 """
 import sys
 import time
 
 try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # 避免 cp950 終端中文亂碼
+except Exception:
+    pass
+
+try:
+    import win32ui  # noqa: F401  必須先 import win32ui（dde 依賴其 MFC 初始化，順序不可顛倒）
     import dde
-    import win32ui  # noqa: F401  (pywin32 的 dde 需要 win32ui 一起在環境中)
-except ImportError:
-    sys.exit("缺 pywin32：請先 `python -m pip install pywin32` 再跑。")
+except ImportError as e:
+    sys.exit(f"pywin32/dde 載入失敗：{e}\n請先 `python -m pip install pywin32`。")
 
-# --- 候選連線參數（會逐一嘗試 ConnectTo，回報哪一組成功）-------------------
-CANDIDATE_SERVICES = ["XQ", "XQLITE", "XQ全球贏家", "DDESERVER"]
-CANDIDATE_TOPICS = ["Quote", "即時報價", "RealTime"]
+# --- 連線參數（XQLITE|Quote 已由 Excel 公式查證；保留 XQ 作備援）-----------
+CANDIDATE_SERVICES = ["XQLITE", "XQ"]
+CANDIDATE_TOPICS = ["Quote"]
 
-# --- 測試標的（請改成你實際要監控的代碼）-----------------------------------
-# 格式不確定的就多放幾個變體，看哪個取得到。
+# --- 測試標的（你已填入真實代碼）-------------------------------------------
 SYMBOLS = {
     "現股整股 台積電": "2330",
-    "股票期貨 台積電期(候選代碼,請確認)": "CDF",     # XQ 的股期代碼格式未知，依實際修改
-    "零股 台積電(候選)": "2330.TW-OD",               # 零股代碼格式未知，依實際修改
-    "ETF期 元大台灣50期(候選)": "NYF",               # ETF 期代碼未知，依實際修改
+    "股票期貨 台積電期近月": "FICDFN*1",
+    "現股整股 群創": "3481",
+    "股票期貨 群創期近月": "FIDQF*1",
 }
 
-# --- 候選欄位與 item 組法（會對每檔逐一嘗試）-------------------------------
-CANDIDATE_FIELDS = ["成交價", "買進價", "賣出價", "買量", "賣量"]
-ITEM_FORMATS = ["{sym}.{field}", "{sym}-{field}", "{sym}_{field}"]
+# --- 欄位與 item 組法 ------------------------------------------------------
+# 股票 item 已知 = 代碼.TW-欄位；期貨代碼(FI...)自帶格式，組法未知故多試幾種。
+CANDIDATE_FIELDS = ["Close", "Bid", "Ask", "BidVol", "AskVol"]
+ITEM_FORMATS = ["{sym}.TW-{field}", "{sym}-{field}", "{sym}.{field}"]
 
 
 def try_connect():
@@ -68,27 +73,29 @@ def probe(conv):
                 item = fmt.format(sym=sym, field=field)
                 try:
                     val = conv.Request(item)
-                    print(f"  [OK] {item:<24} => {val!r}")
+                    print(f"  [OK] {item:<26} => {val!r}")
                     got_any = True
                 except Exception as e:
-                    print(f"  [--] {item:<24} ({e})")
+                    print(f"  [--] {item:<26} ({e})")
                 time.sleep(0.15)
         if not got_any:
-            print("  ⚠ 這檔沒有任何 item 取得到 → 代碼格式可能不對，請對照 XQ 報價列表的實際代碼。")
+            print("  ⚠ 這檔沒有任何 item 取得到 → 代碼或欄位格式可能不對。")
 
 
 def main():
-    print("=== XQ DDE 探測開始（請確認 XQ 已開啟且行情在跑）===\n")
+    print("=== XQ DDE 探測開始（請在開著 XQ 的本機終端執行）===\n")
     result = try_connect()
     if not result:
-        print("\n✗ 所有候選 service/topic 都連不上。")
-        print("  請打開 XQ 的 DDE 說明，確認正確的 service/topic 名稱後，修改本檔 CANDIDATE_* 再跑。")
+        print("\n✗ ConnectTo 全部失敗。可能原因：")
+        print("  1) XQ 未開/未登入（行情沒在跑）。")
+        print("  2) XQ 內未啟用 DDE → 先用 Excel 貼 =XQLITE|Quote!'2330.TW-Close' 測試。")
+        print("  3) 此終端與 XQ 不在同一桌面 session（例如由代理代跑）→ 請在你自己的終端跑。")
         return
     _svc, _topic, conv = result
     probe(conv)
     print("\n=== 探測結束 ===")
-    print("請回報：① 哪組 service/topic 成功 ② 哪種 item 格式(代碼.欄位)取得到數字")
-    print("        ③ 股期/零股/ETF期 的實際代碼長怎樣 ④ 數字更新有沒有延遲。")
+    print("請回報：① 哪種 item 格式(股票/期貨各自)取得到數字 ② Bid/Ask/Close 等欄位名是否正確")
+    print("        ③ 期貨 FICDFN*1 用哪種組法取得到 ④ 數字有無延遲。")
 
 
 if __name__ == "__main__":
