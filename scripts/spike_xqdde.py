@@ -41,10 +41,11 @@ SYMBOLS = {
     "股票期貨 群創期近月": "FIDQF*1",
 }
 
-# --- 欄位與 item 組法 ------------------------------------------------------
-# 股票 item 已知 = 代碼.TW-欄位；期貨代碼(FI...)自帶格式，組法未知故多試幾種。
-CANDIDATE_FIELDS = ["Close", "Bid", "Ask", "BidVol", "AskVol"]
-ITEM_FORMATS = ["{sym}.TW-{field}", "{sym}-{field}", "{sym}.{field}"]
+# --- 欄位與 item 組法（已查證 by XQ「複製 DDE 公式」實際輸出）--------------
+# 股票 item = 代碼.TW-欄位（例 2330.TW-Bid）；期貨 item = 代碼.TF-欄位（例 FIDQF*1.TF-Bid）
+# 一個 item 可以逗號串多欄位一次拿（生產 feed 會這樣用；spike 先單欄位驗證）。
+CANDIDATE_FIELDS = ["Bid", "Ask", "Price", "Name"]
+ITEM_FORMATS = ["{sym}.TW-{field}", "{sym}.TF-{field}"]
 
 
 def try_connect():
